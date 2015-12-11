@@ -6,8 +6,6 @@
 #include <windows.h>
 #include <type_traits>
 
-static FILE* fp = 0;
-
 template<class T>
 class JmpHookedFunction
 {
@@ -54,16 +52,9 @@ public:
 		{
             MemoryProtection memProt( (void*)iOldFunc, 0x100 );
 			if ( iNewFunc && iHooked == false )
-			{
-			
-                fprintf(fp, "Gonna hook, iOldFunc = 0x%08x, iNewfunc = 0x%08x\n", iOldFunc, iNewFunc);
-                fflush(fp);
-
+			{			
 				// JMP
 				*((unsigned char *) ((unsigned int)iOldFunc+0)) = 0xE9;
-
-                fprintf(fp, "Let's read the value we just wrote : 0x%02x\n", ((uint8_t*)iOldFunc)[0]);
-                fflush(fp);
 
 				// New func addr
                 unsigned int addr = (unsigned int)iNewFunc;
@@ -80,16 +71,11 @@ public:
                 }
 
                 *((unsigned int *)((unsigned int)iOldFunc + 1)) = (unsigned int)tmp;
-                fprintf(fp, "Let's read the value we just wrote : 0x%02x\n", ((uint8_t*)iOldFunc)[0]);
-                fflush(fp);
 
 				iHooked = true;
 			}
 		}
 		FlushInstructionCache( GetCurrentProcess(), (void*)iOldFunc, 6 );
-
-        fprintf(fp, "Let's read the value we just wrote : 0x%02x\n", ((uint8_t*)iOldFunc)[0]);
-        fflush(fp);
 	}
 
 

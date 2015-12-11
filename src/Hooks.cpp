@@ -3,7 +3,7 @@
 #include <cstdint>
 
 
-//static FILE* fp = 0;
+static FILE* fp = 0;
 static void** ppBufApp0xC10 = (void**)(0x1A79F60);
 
 void* getBufApp0xC10()
@@ -24,19 +24,40 @@ struct FFModuleInterface
     uint32_t keyboardInputHandler;
 };
 
+struct FFScene
+{
+    uint32_t isEnabled;                 // 0x0
+    uint32_t field4;
+    uint32_t field8;
+    uint32_t fieldC;
+    uint32_t field10;
+    uint32_t nNumMeshes;                // 0x14
+    uint32_t fieldRest[28];
+};
+
+static_assert(sizeof(FFScene) == 0x88, "FFScene has incorrect size");
+
 struct BufApp0xC10
 {
     uint32_t field000;
     uint32_t field004;
     uint32_t field008;
     uint32_t field00C;
-    uint32_t fieldRest0[661];
+    uint32_t fieldRest0[202];
+    FFScene* pFFScene0;                 // 0x338
+    FFScene* pFFScene1;                 // 0x33C
+    uint32_t fieldRest1[367];
+    void*    pBackBufferSurfaceDesc;    // 0x8FC
+    uint32_t fieldRest2[89];
     uint32_t isRequestedModuleChange;   // 0xA64
-    uint32_t fieldRest1[50];
+    uint32_t nCurrentSceneIndex;        // 0xA68
+    uint32_t fieldRest3[49];
     FFModuleInterface currentModule;    // 0xB30
     FFModuleInterface nextModule;       // 0xB4C
-    uint32_t fieldRest2[42];            // 0xB68
+    uint32_t fieldRest4[42];            // 0xB68
 };
+
+static_assert(sizeof(BufApp0xC10) == 0xC10, "BufApp0xC10 has incorrect size");
 
 uint32_t FFSwitchModule(FFModuleInterface* pFFModuleInterface, BufApp0xC10* pBufApp0xC10)
 {
@@ -95,18 +116,60 @@ void (*FFGetTimeDiff_real)(FFTime*, FFTime*, FFTime*) = (void (*)(FFTime*, FFTim
 double (*FFConvertU64ToDouble_real)(FFTime*) = (double (*)(FFTime*))0x40AAEF;
 double* pDbl_1D2BD58 = (double*)0x1D2BD58;
 void (*sub_4980C0)() = (void (*)())0x4980C0;
-void (*sub_56B880)(uint32_t, BufApp0xC10*) = (void (*)(uint32_t, BufApp0xC10*))0x56B880;
+void (*sub_56B880_real)(uint32_t, BufApp0xC10*) = (void (*)(uint32_t, BufApp0xC10*))0x56B880;
 void (*FFDrawSceneIndex_Gx_real)(uint32_t, BufApp0xC10*) = (void (*)(uint32_t, BufApp0xC10*))0x41E947;
+void (*FFDrawScene_Gx_real)(FFScene*, BufApp0xC10*) = (void (*)(FFScene*, BufApp0xC10*))0x41E7D8;
 uint32_t* pDWORD_206AD28 = (uint32_t*)0x206AD28;
 uint32_t* pDWORD_206AD30 = (uint32_t*)0x206AD30;
 void (*sub_499EA0)() = (void (*)())0x499EA0;
 void (*sub_45B450)() = (void (*)())0x45B450;
 void (*sub_499A40)() = (void (*)())0x499A40;
 void (*FFEndScene_Gx_real)(BufApp0xC10*) = (void (*)(BufApp0xC10*))0x41E99D;
+uint32_t* pDWORD_206AD2C = (uint32_t*)0x206AD2C;
+void (*sub_465920)() = (void (*)())0x465920;
 
 void nullSub()
 {
 }
+
+void sub_56B880(uint32_t unused, BufApp0xC10* pBufApp0xC10)
+{
+    if (*pDWORD_206AD2C == 0)
+        return;
+
+    sub_465920();
+    *pDWORD_206AD2C = 0;
+    FFDrawSceneIndex_Gx_real(0, pBufApp0xC10);
+}
+
+// FFDrawSceneIndex = 0x44235D
+void FFDrawSceneIndex(uint32_t nSceneId, BufApp0xC10* pBufApp0xC10)
+{
+    if (!pBufApp0xC10)
+        return;
+
+    if (!pBufApp0xC10->pBackBufferSurfaceDesc)
+        return;
+
+    pBufApp0xC10->nCurrentSceneIndex = nSceneId;
+
+    if (nSceneId == 0)
+    {
+        pBufApp0xC10->pFFScene0->isEnabled = 1;
+        pBufApp0xC10->pFFScene1->isEnabled = 0;
+        FFDrawScene_Gx_real(pBufApp0xC10->pFFScene0, pBufApp0xC10);
+    }
+    else if (nSceneId == 1)
+    {
+        pBufApp0xC10->pFFScene0->isEnabled = 0;
+        pBufApp0xC10->pFFScene1->isEnabled = 1;
+        FFDrawScene_Gx_real(pBufApp0xC10->pFFScene1, pBufApp0xC10);
+    }
+}
+
+typedef decltype(&FFDrawSceneIndex) FFDrawSceneIndex_type;
+static FFDrawSceneIndex_type real_FFDrawSceneIndex = (FFDrawSceneIndex_type)0x0044235D;
+static JmpHookedFunction<FFDrawSceneIndex_type>* FFDrawSceneIndex_hook;
 
 // start Menu main loop = 0x4A2320
 void startMenuMainLoop(BufApp0xC10* pBufApp0xC10)
@@ -165,17 +228,12 @@ void startMenuMainLoop(BufApp0xC10* pBufApp0xC10)
     do
     {
         FFGetTime_real(&pDWORD_1D2BD60[1]);
-        FFTime frameTime;
-        FFGetTimeDiff_real(&pDWORD_1D2BD60[1], &pDWORD_1D2BD60[0], &frameTime);
-        //timeDiff = FFConvertU64ToDouble_real(&frameTime);
-        timeDiff = (double)(frameTime);
+        timeDiff = (double)(pDWORD_1D2BD60[1] - pDWORD_1D2BD60[0]);
     } while (timeDiff < *pDbl_1D2BD58);
-
-    fprintf(fp, "Menu main loop, frame time = %f\n", timeDiff);
-    fflush(fp);
 
     pDWORD_1D2BD60[0] = pDWORD_1D2BD60[1];
 }
+
 
 typedef decltype(&getBufApp0xC10) GetBufApp0xC10_type;
 static GetBufApp0xC10_type real_GetBufApp0xC10 = (GetBufApp0xC10_type)0x0040A04A;
@@ -199,4 +257,5 @@ void InstallHooks()
     GetBufApp0xC10_hook = new JmpHookedFunction<GetBufApp0xC10_type>(real_GetBufApp0xC10, &getBufApp0xC10);
     FFSwitchModule_hook = new JmpHookedFunction<FFSwitchModule_type>(real_FFSwitchModule, &FFSwitchModule);
     startMenuMainLoop_hook = new JmpHookedFunction<MainLoop_type>(real_startMenuMainLoop, &startMenuMainLoop);
+    FFDrawSceneIndex_hook = new JmpHookedFunction<FFDrawSceneIndex_type>(real_FFDrawSceneIndex, &FFDrawSceneIndex);
 }
